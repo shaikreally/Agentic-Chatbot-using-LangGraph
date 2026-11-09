@@ -63,8 +63,6 @@ def get_retriever():
 
 
 # rag tool
-
-
 @tool
 def rag_tool(query: str) -> str:
     """
