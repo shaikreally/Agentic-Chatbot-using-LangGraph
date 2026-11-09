@@ -1,15 +1,6 @@
-from backend import (
-    chatbot,
-    get_all_threads,
-    ingest_rag_document
-)
+from backend import chatbot, get_all_threads, ingest_rag_document
 
-from langchain_core.messages import (
-    BaseMessage,
-    HumanMessage,
-    AIMessage,
-    ToolMessage
-)
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 
 from langgraph.types import Command
 
@@ -54,13 +45,7 @@ def reset_chat():
 def load_conversation(thread_id):
 
     # Get the saved state for the selected thread
-    state = chatbot.get_state(
-        config={
-            "configurable": {
-                "thread_id": thread_id
-            }
-        }
-    )
+    state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
 
     # Return saved messages
     # Return an empty list if no messages are available
@@ -68,6 +53,7 @@ def load_conversation(thread_id):
 
 
 # ========================= HITL helper functions =========================
+
 
 def get_pending_interrupt(thread_id):
     """
@@ -77,11 +63,7 @@ def get_pending_interrupt(thread_id):
         The pending Interrupt object, or None.
     """
 
-    config = {
-        "configurable": {
-            "thread_id": thread_id
-        }
-    }
+    config = {"configurable": {"thread_id": thread_id}}
 
     try:
 
@@ -89,29 +71,17 @@ def get_pending_interrupt(thread_id):
         state_snapshot = chatbot.get_state(config)
 
         # Some LangGraph versions expose interrupts directly
-        direct_interrupts = getattr(
-            state_snapshot,
-            "interrupts",
-            ()
-        ) or ()
+        direct_interrupts = getattr(state_snapshot, "interrupts", ()) or ()
 
         if direct_interrupts:
             return direct_interrupts[0]
 
         # Other LangGraph versions store interrupts inside tasks
-        tasks = getattr(
-            state_snapshot,
-            "tasks",
-            ()
-        ) or ()
+        tasks = getattr(state_snapshot, "tasks", ()) or ()
 
         for task in tasks:
 
-            task_interrupts = getattr(
-                task,
-                "interrupts",
-                ()
-            ) or ()
+            task_interrupts = getattr(task, "interrupts", ()) or ()
 
             if task_interrupts:
                 return task_interrupts[0]
@@ -129,10 +99,7 @@ def save_pending_interrupt(thread_id, interrupt_object):
     Save the pending interrupt information inside Streamlit state.
     """
 
-    st.session_state["pending_hitl"] = {
-        "thread_id": thread_id,
-        "prompt": str(interrupt_object.value)
-    }
+    st.session_state["pending_hitl"] = {"thread_id": thread_id, "prompt": str(interrupt_object.value)}
 
 
 def sync_pending_interrupt(thread_id):
@@ -149,21 +116,13 @@ def sync_pending_interrupt(thread_id):
 
     if pending_interrupt is not None:
 
-        save_pending_interrupt(
-            thread_id,
-            pending_interrupt
-        )
+        save_pending_interrupt(thread_id, pending_interrupt)
 
     else:
 
-        current_pending = st.session_state.get(
-            "pending_hitl"
-        )
+        current_pending = st.session_state.get("pending_hitl")
 
-        if (
-            current_pending is not None
-            and current_pending.get("thread_id") == thread_id
-        ):
+        if current_pending is not None and current_pending.get("thread_id") == thread_id:
             st.session_state["pending_hitl"] = None
 
 
@@ -177,15 +136,11 @@ def resume_hitl_execution(decision):
             "no" rejects the stock purchase.
     """
 
-    pending_hitl = st.session_state.get(
-        "pending_hitl"
-    )
+    pending_hitl = st.session_state.get("pending_hitl")
 
     if not pending_hitl:
 
-        st.warning(
-            "There is no pending action to approve or reject."
-        )
+        st.warning("There is no pending action to approve or reject.")
 
         return
 
@@ -194,12 +149,8 @@ def resume_hitl_execution(decision):
 
     # The same thread ID must be used when resuming
     resume_config = {
-        "configurable": {
-            "thread_id": interrupted_thread_id
-        },
-        "metadata": {
-            "thread_id": interrupted_thread_id
-        },
+        "configurable": {"thread_id": interrupted_thread_id},
+        "metadata": {"thread_id": interrupted_thread_id},
         "run_name": "hitl_resume_trace",
     }
 
@@ -208,12 +159,7 @@ def resume_hitl_execution(decision):
         # Display the resumed response
         with st.chat_message("assistant"):
 
-            status_holder = {
-                "box": st.status(
-                    "🔄 Resuming the requested action...",
-                    expanded=True
-                )
-            }
+            status_holder = {"box": st.status("🔄 Resuming the requested action...", expanded=True)}
 
             def resumed_ai_only_stream():
 
@@ -225,16 +171,9 @@ def resume_hitl_execution(decision):
                 ):
 
                     # Update tool execution status
-                    if isinstance(
-                        message_chunk,
-                        ToolMessage
-                    ):
+                    if isinstance(message_chunk, ToolMessage):
 
-                        tool_name = getattr(
-                            message_chunk,
-                            "name",
-                            "tool"
-                        )
+                        tool_name = getattr(message_chunk, "name", "tool")
 
                         status_holder["box"].update(
                             label=f"🔧 Using `{tool_name}` …",
@@ -243,75 +182,49 @@ def resume_hitl_execution(decision):
                         )
 
                     # Stream only assistant-generated text
-                    if isinstance(
-                        message_chunk,
-                        AIMessage
-                    ):
+                    if isinstance(message_chunk, AIMessage):
 
                         if message_chunk.content:
                             yield message_chunk.content
 
             # Display the streamed final answer
-            resumed_ai_message = st.write_stream(
-                resumed_ai_only_stream()
-            )
+            resumed_ai_message = st.write_stream(resumed_ai_only_stream())
 
             # Check whether another interrupt occurred
-            next_interrupt = get_pending_interrupt(
-                interrupted_thread_id
-            )
+            next_interrupt = get_pending_interrupt(interrupted_thread_id)
 
             if next_interrupt is not None:
 
-                save_pending_interrupt(
-                    interrupted_thread_id,
-                    next_interrupt
-                )
+                save_pending_interrupt(interrupted_thread_id, next_interrupt)
 
-                status_holder["box"].update(
-                    label="⚠️ Another approval is required",
-                    state="complete",
-                    expanded=False
-                )
+                status_holder["box"].update(label="⚠️ Another approval is required", state="complete", expanded=False)
 
             else:
 
                 # No more pending approval
                 st.session_state["pending_hitl"] = None
 
-                status_holder["box"].update(
-                    label="✅ Action completed",
-                    state="complete",
-                    expanded=False
-                )
+                status_holder["box"].update(label="✅ Action completed", state="complete", expanded=False)
 
         # Save the assistant response in Streamlit UI history
         if resumed_ai_message:
 
-            st.session_state["message_history"].append({
-                "role": "assistant",
-                "content": resumed_ai_message
-            })
+            st.session_state["message_history"].append({"role": "assistant", "content": resumed_ai_message})
 
         # Rerun so the response appears in normal chat order
         st.rerun()
 
     except Exception as error:
 
-        st.error(
-            f"Could not resume the requested action: {error}"
-        )
+        st.error(f"Could not resume the requested action: {error}")
 
 
 # ========================= Page configuration =========================
 
-st.set_page_config(
-    page_title="Agentic Chatbot",
-    page_icon="🤖"
-)
+st.set_page_config(page_title="Agentic Chatbot", page_icon="🤖")
 
 # Display the main application title
-st.title("Agentic Chatbot with LangGraph")
+st.title("🤖 Agentic Chatbot with LangGraph")
 
 
 # Create message_history when the app runs for the first time
@@ -345,9 +258,7 @@ add_thread(st.session_state["thread_id"])
 # ========================= HITL ADDED =========================
 
 # Recover pending approval after page refresh or rerun
-sync_pending_interrupt(
-    st.session_state["thread_id"]
-)
+sync_pending_interrupt(st.session_state["thread_id"])
 
 # =============================================================
 
@@ -373,10 +284,7 @@ if st.sidebar.button("New Chat"):
 for thread_id in st.session_state["chat_threads"][::-1]:
 
     # Create one sidebar button for every conversation
-    if st.sidebar.button(
-        str(thread_id),
-        key=thread_id
-    ):
+    if st.sidebar.button(str(thread_id), key=thread_id):
 
         # Set the selected thread as the current thread
         st.session_state["thread_id"] = thread_id
@@ -404,10 +312,7 @@ for thread_id in st.session_state["chat_threads"][::-1]:
                 continue
 
             # Convert the LangChain message into a dictionary
-            temp_messages.append({
-                "role": role,
-                "content": message.content
-            })
+            temp_messages.append({"role": role, "content": message.content})
 
         # Replace the current UI history with the selected conversation
         st.session_state["message_history"] = temp_messages
@@ -438,26 +343,19 @@ for message in st.session_state["message_history"]:
 # ========================= HITL approval interface =========================
 
 # Get the currently pending approval request
-pending_hitl = st.session_state.get(
-    "pending_hitl"
-)
+pending_hitl = st.session_state.get("pending_hitl")
 
 # Check whether the pending approval belongs to
 # the currently selected conversation
 current_thread_has_pending_hitl = (
-    pending_hitl is not None
-    and pending_hitl.get("thread_id")
-    == st.session_state["thread_id"]
+    pending_hitl is not None and pending_hitl.get("thread_id") == st.session_state["thread_id"]
 )
 
 
 # Display approval controls
 if current_thread_has_pending_hitl:
 
-    st.warning(
-        "🧑 Human approval required\n\n"
-        f"{pending_hitl['prompt']}"
-    )
+    st.warning("🧑 Human approval required\n\n" f"{pending_hitl['prompt']}")
 
     approve_column, reject_column = st.columns(2)
 
@@ -468,7 +366,7 @@ if current_thread_has_pending_hitl:
             "✅ Approve Purchase",
             key=f"approve_{st.session_state['thread_id']}",
             type="primary",
-            use_container_width=True
+            use_container_width=True,
         ):
 
             # Send "yes" back to interrupt()
@@ -477,11 +375,7 @@ if current_thread_has_pending_hitl:
     # Reject button
     with reject_column:
 
-        if st.button(
-            "❌ Reject Purchase",
-            key=f"reject_{st.session_state['thread_id']}",
-            use_container_width=True
-        ):
+        if st.button("❌ Reject Purchase", key=f"reject_{st.session_state['thread_id']}", use_container_width=True):
 
             # Send "no" back to interrupt()
             resume_hitl_execution("no")
@@ -498,9 +392,8 @@ submission = st.chat_input(
     "Type here",
     accept_file=True,
     file_type=["pdf"],
-
     # Disable input while waiting for human approval
-    disabled=current_thread_has_pending_hitl
+    disabled=current_thread_has_pending_hitl,
 )
 
 
@@ -529,46 +422,29 @@ if submission:
         try:
 
             # Save the uploaded PDF as a temporary local file
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".pdf"
-            ) as temporary_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temporary_file:
 
-                temporary_file.write(
-                    uploaded_pdf.getvalue()
-                )
+                temporary_file.write(uploaded_pdf.getvalue())
 
                 temporary_file_path = temporary_file.name
 
             # Call the existing backend RAG ingestion function
-            with st.spinner(
-                f"Processing {uploaded_pdf.name}..."
-            ):
+            with st.spinner(f"Processing {uploaded_pdf.name}..."):
 
-                ingest_rag_document(
-                    temporary_file_path
-                )
+                ingest_rag_document(temporary_file_path)
 
             # Display PDF processing confirmation
-            st.toast(
-                f"{uploaded_pdf.name} processed successfully.",
-                icon="✅"
-            )
+            st.toast(f"{uploaded_pdf.name} processed successfully.", icon="✅")
 
         except Exception as error:
 
             # Display PDF processing error
-            st.error(
-                f"PDF processing failed: {error}"
-            )
+            st.error(f"PDF processing failed: {error}")
 
         finally:
 
             # Delete the temporary PDF after indexing
-            if (
-                temporary_file_path
-                and os.path.exists(temporary_file_path)
-            ):
+            if temporary_file_path and os.path.exists(temporary_file_path):
                 os.remove(temporary_file_path)
 
 
@@ -576,10 +452,7 @@ if submission:
 if user_input:
 
     # Save the user's message in Streamlit session state
-    st.session_state["message_history"].append({
-        "role": "user",
-        "content": user_input
-    })
+    st.session_state["message_history"].append({"role": "user", "content": user_input})
 
     # Display the user's message in the chat interface
     with st.chat_message("user"):
@@ -588,12 +461,8 @@ if user_input:
     # Pass the current thread ID to LangGraph
     # LangGraph uses this ID to save and retrieve conversation memory
     CONFIG = {
-        "configurable": {
-            "thread_id": st.session_state["thread_id"]
-        },
-        "metadata": {
-            "thread_id": st.session_state["thread_id"]
-        },
+        "configurable": {"thread_id": st.session_state["thread_id"]},
+        "metadata": {"thread_id": st.session_state["thread_id"]},
         "run_name": "chat_trace",
     }
 
@@ -601,41 +470,25 @@ if user_input:
     with st.chat_message("assistant"):
 
         # Use a mutable holder so the generator can set/modify it
-        status_holder = {
-            "box": None
-        }
+        status_holder = {"box": None}
 
         def ai_only_stream():
 
             for message_chunk, metadata in chatbot.stream(
-                {
-                    "messages": [
-                        HumanMessage(content=user_input)
-                    ]
-                },
+                {"messages": [HumanMessage(content=user_input)]},
                 config=CONFIG,
                 stream_mode="messages",
             ):
 
                 # Lazily create & update the SAME status container
                 # when any tool runs
-                if isinstance(
-                    message_chunk,
-                    ToolMessage
-                ):
+                if isinstance(message_chunk, ToolMessage):
 
-                    tool_name = getattr(
-                        message_chunk,
-                        "name",
-                        "tool"
-                    )
+                    tool_name = getattr(message_chunk, "name", "tool")
 
                     if status_holder["box"] is None:
 
-                        status_holder["box"] = st.status(
-                            f"🔧 Using `{tool_name}` …",
-                            expanded=True
-                        )
+                        status_holder["box"] = st.status(f"🔧 Using `{tool_name}` …", expanded=True)
 
                     else:
 
@@ -646,10 +499,7 @@ if user_input:
                         )
 
                 # Stream ONLY assistant tokens
-                if isinstance(
-                    message_chunk,
-                    AIMessage
-                ):
+                if isinstance(message_chunk, AIMessage):
                     yield message_chunk.content
 
             # ========================= HITL ADDED =========================
@@ -658,17 +508,12 @@ if user_input:
             # a completed ToolMessage.
             #
             # Inspect the saved checkpoint after streaming ends.
-            pending_interrupt = get_pending_interrupt(
-                st.session_state["thread_id"]
-            )
+            pending_interrupt = get_pending_interrupt(st.session_state["thread_id"])
 
             if pending_interrupt is not None:
 
                 # Save the interrupt for displaying approval buttons
-                save_pending_interrupt(
-                    st.session_state["thread_id"],
-                    pending_interrupt
-                )
+                save_pending_interrupt(st.session_state["thread_id"], pending_interrupt)
 
                 yield (
                     "\n\n⚠️ This stock purchase requires your approval. "
@@ -678,37 +523,22 @@ if user_input:
 
             # =============================================================
 
-        ai_message = st.write_stream(
-            ai_only_stream()
-        )
+        ai_message = st.write_stream(ai_only_stream())
 
         # Finalize only if a tool was actually used
         if status_holder["box"] is not None:
 
             # Check whether execution is waiting for approval
-            if get_pending_interrupt(
-                st.session_state["thread_id"]
-            ) is not None:
+            if get_pending_interrupt(st.session_state["thread_id"]) is not None:
 
-                status_holder["box"].update(
-                    label="⏸️ Waiting for human approval",
-                    state="complete",
-                    expanded=False
-                )
+                status_holder["box"].update(label="⏸️ Waiting for human approval", state="complete", expanded=False)
 
             else:
 
-                status_holder["box"].update(
-                    label="✅ Tool finished",
-                    state="complete",
-                    expanded=False
-                )
+                status_holder["box"].update(label="✅ Tool finished", state="complete", expanded=False)
 
     # Save the complete assistant response in Streamlit session state
-    st.session_state["message_history"].append({
-        "role": "assistant",
-        "content": ai_message
-    })
+    st.session_state["message_history"].append({"role": "assistant", "content": ai_message})
 
     # ========================= HITL ADDED =========================
 
@@ -716,8 +546,7 @@ if user_input:
     # Rerun so they appear immediately after interrupt().
     if (
         st.session_state.get("pending_hitl") is not None
-        and st.session_state["pending_hitl"].get("thread_id")
-        == st.session_state["thread_id"]
+        and st.session_state["pending_hitl"].get("thread_id") == st.session_state["thread_id"]
     ):
         st.rerun()
 
